@@ -1,0 +1,27 @@
+name: Endfield Daily Checkin
+
+on:
+  schedule:
+    # Runs at 20:00 UTC (which is 4:00 AM UTC+8, the daily reset time)
+    - cron: '0 20 * * *'
+  workflow_dispatch: # This allows you to run it manually to test it
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Selenium
+        run: pip install selenium
+
+      - name: Run checkin script
+        env:
+          SKPORT_COOKIES: ${{ secrets.SKPORT_COOKIES }}
+        run: python checkin.py
