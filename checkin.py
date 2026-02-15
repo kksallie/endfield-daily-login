@@ -17,7 +17,7 @@ def run_checkin():
 
     try:
         # 1. Base Domain
-        driver.get("https://www.skport.com")
+        driver.get("https://game.skport.com")
         
         # 2. Inject Cookies
         cookies_raw = os.getenv("SKPORT_COOKIES")
@@ -25,9 +25,22 @@ def run_checkin():
             try:
                 cookies = json.loads(cookies_raw)
                 for cookie in cookies:
-                    if 'sameSite' in cookie and cookie['sameSite'] not in ["Strict", "Lax", "None"]:
-                        del cookie['sameSite']
-                    driver.add_cookie(cookie)
+                    # 1. Fix sameSite case (Strict/Lax/None)
+                    if 'sameSite' in cookie and cookie['sameSite']:
+                        ss = str(cookie['sameSite']).capitalize()
+                        if ss in ["Strict", "Lax", "None"]:
+                            cookie['sameSite'] = ss
+                        else:
+                            del cookie['sameSite']
+                    
+                    # 2. Skip incompatible subdomains
+                    domain = cookie.get('domain', '')
+                    clean_domain = domain[1:] if domain.startswith('.') else domain
+                    
+                    if clean_domain in ["skport.com", "game.skport.com"]:
+                        driver.add_cookie(cookie)
+                    else:
+                        print(f"Skipping cookie {cookie.get('name')} for domain {domain}")
             except Exception as e:
                 print(f"Cookie injection warning: {e}")
 
