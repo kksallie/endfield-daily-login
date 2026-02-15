@@ -25,30 +25,44 @@ def run_checkin():
             try:
                 cookies = json.loads(cookies_raw)
                 for cookie in cookies:
-                    # 1. Fix sameSite case (Strict/Lax/None)
-                    if 'sameSite' in cookie and cookie['sameSite']:
-                        ss = str(cookie['sameSite']).capitalize()
-                        if ss in ["Strict", "Lax", "None"]:
-                            cookie['sameSite'] = ss
+                    # 1. Clean sameSite (Selenium only likes specific strings)
+                    if 'sameSite' in cookie:
+                        if isinstance(cookie['sameSite'], str):
+                            ss = cookie['sameSite'].capitalize()
+                            if ss in ["Strict", "Lax", "None"]:
+                                cookie['sameSite'] = ss
+                            else:
+                                del cookie['sameSite']
                         else:
                             del cookie['sameSite']
                     
-                    # 2. Skip incompatible subdomains
-                    domain = cookie.get('domain', '')
-                    clean_domain = domain[1:] if domain.startswith('.') else domain
+                    # 2. Fix domain issues
+                    # Removing the 'domain' key forces Selenium to use the current domain (game.skport.com)
+                    # This prevents the "InvalidCookieDomainError"
+                    if 'domain' in cookie:
+                        del cookie['domain']
                     
-                    if clean_domain in ["skport.com", "game.skport.com"]:
-                        driver.add_cookie(cookie)
-                    else:
-                        print(f"Skipping cookie {cookie.get('name')} for domain {domain}")
+                    driver.add_cookie(cookie)
+                print("✅ Cookies injected successfully.")
             except Exception as e:
-                print(f"Cookie injection warning: {e}")
+                print(f"⚠️ Cookie injection warning: {e}")
 
         # 3. Go to Sign-in page
         driver.get("https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon")
         
         print("Waiting for page load and session check...")
-        time.sleep(12) 
+        time.sleep(15) 
+
+        # 4. Ensure the grid is expanded
+        try:
+            # Look for the 'Show All Rewards' / 'Collapse' button
+            show_all_btn = driver.find_element(By.CLASS_NAME, "sc-BvjM")
+            if "Show All" in show_all_btn.text:
+                driver.execute_script("arguments[0].click();", show_all_btn)
+                print("Expanded the reward grid.")
+                time.sleep(2)
+        except:
+            pass
 
         # 4. ROBUST LOGIN FALLBACK
         # We check for the email field by its 'name' attribute which we saw in your HTML
