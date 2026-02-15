@@ -17,7 +17,7 @@ def run_checkin():
 
     try:
         # 1. Base Domain
-        driver.get("https://game.skport.com")
+        driver.get("https://www.skport.com")
         
         # 2. Inject Cookies
         cookies_raw = os.getenv("SKPORT_COOKIES")
