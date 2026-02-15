@@ -33,22 +33,25 @@ def run_checkin():
         time.sleep(5) # Wait for page JS to load
 
         # 4. Logic to find and click the active sign-in button
-        # Based on the grid: find the first day without 'completed-overlay'
         items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
         for item in items:
-            # Check if this is the active day (not completed)
-            if not item.find_elements(By.ID, "completed-overlay"):
-                day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
-                print(f"Targeting: {day_label.text}")
+            # 1. Check if this day is already completed
+            if item.find_elements(By.ID, "completed-overlay"):
+                continue
                 
-                # Click the reward icon to claim
+            # 2. Check for the 'lottie-container' (the claimable animation)
+            # This is the unique marker you just found in the HTML!
+            if item.find_elements(By.ID, "lottie-container"):
+                day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
+                print(f"Verified {day_label.text} is ready to claim. Clicking...")
+                
+                # Click the icon container
                 target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
                 target.click()
-                print("Click performed.")
-                time.sleep(2)
-                break
-        else:
-            print("No claimable day found (perhaps already signed in).")
+                print("Claim action sent.")
+                return # Exit successfully
+            
+        print("No claimable day (lottie-container) found. Reset likely hasn't happened yet.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
