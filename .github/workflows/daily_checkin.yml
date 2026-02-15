@@ -25,4 +25,6 @@ jobs:
       - name: Run checkin script
         env:
           SKPORT_COOKIES: ${{ secrets.SKPORT_COOKIES }}
+          SKPORT_EMAIL: ${{ secrets.SKPORT_EMAIL }}
+          SKPORT_PASSWORD: ${{ secrets.SKPORT_PASSWORD }}
         run: python checkin.py
