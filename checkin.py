@@ -8,40 +8,51 @@ from selenium.webdriver.common.by import By
 def run_checkin():
     options = Options()
     options.add_argument("--headless")
-    # 1. SET A REAL USER AGENT (Prevents bot detection)
     options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
     
     driver = webdriver.Firefox(options=options)
-    driver.set_window_size(1920, 1080) # Ensure the grid isn't cramped
+    driver.set_window_size(1920, 1080)
 
     try:
-        # 2. LOAD DOMAIN
+        # 1. Base Domain context
         driver.get("https://game.skport.com")
-        time.sleep(2)
         
-        # 3. INJECT COOKIES
+        # 2. Inject Cookies
         cookies_raw = os.getenv("SKPORT_COOKIES")
-        if not cookies_raw:
-            print("Error: SKPORT_COOKIES secret not found.")
-            return
-
-        cookies = json.loads(cookies_raw)
-        for cookie in cookies:
-            if 'sameSite' in cookie:
-                if cookie['sameSite'] not in ["Strict", "Lax", "None"]:
+        if cookies_raw:
+            cookies = json.loads(cookies_raw)
+            for cookie in cookies:
+                if 'sameSite' in cookie and cookie['sameSite'] not in ["Strict", "Lax", "None"]:
                     del cookie['sameSite']
-            driver.add_cookie(cookie)
+                driver.add_cookie(cookie)
 
-        # 4. GO TO SIGN-IN PAGE
+        # 3. Go to Sign-in page
         driver.get("https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon")
-        time.sleep(8) # Wait extra time for the session to "take"
+        time.sleep(8)
 
-        # DEBUG: Check if we are actually logged in
-        if "Log in" in driver.page_source:
-            print("WARNING: 'Log in' text detected. Cookies might be invalid or expired.")
-            driver.save_screenshot("login_failed.png") 
+        # 4. FALLBACK LOGIN LOGIC
+        # Check if the login modal is visible (using the placeholder text from your screenshot)
+        email_fields = driver.find_elements(By.XPATH, "//input[@placeholder='Enter email address']")
+        if email_fields:
+            print("Cookies failed. Attempting manual login fallback...")
+            email = os.getenv("SKPORT_EMAIL")
+            password = os.getenv("SKPORT_PASSWORD")
+            
+            if email and password:
+                # Fill Email
+                email_fields[0].send_keys(email)
+                # Fill Password
+                driver.find_element(By.XPATH, "//input[@placeholder='Enter password']").send_keys(password)
+                # Click Log In button
+                login_btn = driver.find_element(By.XPATH, "//button[contains(., 'Log in')]")
+                driver.execute_script("arguments[0].click();", login_btn)
+                
+                print("Login submitted. Waiting for redirect...")
+                time.sleep(10) # Wait for login to process
+            else:
+                print("Error: Credentials secrets not found.")
 
-        # 5. FIND THE REWARD
+        # 5. Claim logic with JS Click fix
         items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
         for item in items:
             if item.find_elements(By.ID, "completed-overlay"):
@@ -49,23 +60,20 @@ def run_checkin():
                 
             if item.find_elements(By.ID, "lottie-container"):
                 day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
-                print(f"Verified {day_label.text} is ready. Clicking...")
+                print(f"Verified {day_label.text} is ready. Claiming...")
                 
-                # TARGET THE BUTTON
                 target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
-                
-                # 6. USE JAVASCRIPT CLICK (Bypasses the "Obscured" error)
+                # Use JS Click to bypass the "Obscured" error
                 driver.execute_script("arguments[0].click();", target)
                 
-                print("Claim action sent via JavaScript.")
+                print("👍 Click successful.")
                 time.sleep(5)
                 return 
             
-        print("No claimable day found. It's possible you're already signed in or reset hasn't happened.")
+        print("No claimable day found. Check if already signed in.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        driver.save_screenshot("error_state.png") # This helps us see the "obscuring" element
     finally:
         driver.quit()
 
