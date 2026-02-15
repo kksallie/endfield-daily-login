@@ -4,6 +4,8 @@ import time
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def run_checkin():
     options = Options()
@@ -20,68 +22,75 @@ def run_checkin():
         # 2. Inject Cookies
         cookies_raw = os.getenv("SKPORT_COOKIES")
         if cookies_raw:
-            cookies = json.loads(cookies_raw)
-            for cookie in cookies:
-                if 'sameSite' in cookie and cookie['sameSite'] not in ["Strict", "Lax", "None"]:
-                    del cookie['sameSite']
-                driver.add_cookie(cookie)
+            try:
+                cookies = json.loads(cookies_raw)
+                for cookie in cookies:
+                    if 'sameSite' in cookie and cookie['sameSite'] not in ["Strict", "Lax", "None"]:
+                        del cookie['sameSite']
+                    driver.add_cookie(cookie)
+            except Exception as e:
+                print(f"Cookie injection warning: {e}")
 
         # 3. Go to Sign-in page
         driver.get("https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon")
         
-        print("Waiting for page to load...")
-        time.sleep(10) 
+        print("Waiting for page load and session check...")
+        time.sleep(12) 
 
-        # 4. AGGRESSIVE LOGIN CHECK
-        # We look for the "Please log in first" text which appears for guests
-        if "Please log in first" in driver.page_source:
-            print("Session not found via cookies. Attempting manual login fallback...")
-            
+        # 4. ROBUST LOGIN FALLBACK
+        # We check for the email field by its 'name' attribute which we saw in your HTML
+        email_fields = driver.find_elements(By.NAME, "email")
+        
+        if email_fields:
+            print("Login modal detected. Attempting credentials fallback...")
             email = os.getenv("SKPORT_EMAIL")
             password = os.getenv("SKPORT_PASSWORD")
             
             if email and password:
-                # Find the email field (it might be inside an iframe or slow to load)
-                email_input = driver.find_element(By.XPATH, "//input[@placeholder='Enter email address']")
-                email_input.send_keys(email)
+                # Fill Email
+                email_fields[0].send_keys(email)
                 
-                pass_input = driver.find_element(By.XPATH, "//input[@placeholder='Enter password']")
-                pass_input.send_keys(password)
+                # Find Password field by type
+                pass_field = driver.find_element(By.XPATH, "//input[@type='password']")
+                pass_field.send_keys(password)
                 
-                login_btn = driver.find_element(By.XPATH, "//button[contains(., 'Log in')]")
+                # Click the Log In button by its type
+                login_btn = driver.find_element(By.XPATH, "//button[@type='submit' and contains(., 'Log in')]")
                 driver.execute_script("arguments[0].click();", login_btn)
                 
-                print("Login clicked. Waiting for the page to reload and settle...")
-                time.sleep(20) # Long wait for the redirect/reload you mentioned
+                print("Login submitted. Waiting for the post-login reload...")
+                # The page reloads after login, so we wait extra time for it to settle
+                time.sleep(25) 
             else:
-                print("❌ Error: Login required but secrets are missing.")
+                print("❌ Error: Login required but secrets (EMAIL/PASSWORD) are missing.")
                 return
 
-        # 5. FINAL VERIFICATION
-        # If we still see "Please log in first", the login failed.
+        # 5. FINAL GUEST CHECK
         if "Please log in first" in driver.page_source:
-            print("❌ Critical Error: Still logged out after login attempt. Stopping to avoid Day 1 trap.")
+            print("❌ Critical Error: Still seeing 'Please log in first'. Login failed.")
             return
 
         # 6. CLAIM LOGIC
-        print("Login verified. Searching for today's reward...")
+        print("Login verified. Locating correct reward day...")
         items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
         for item in items:
+            # Skip if checkmark exists
             if item.find_elements(By.ID, "completed-overlay"):
                 continue
                 
+            # Find the glowing 'claimable' day
             if item.find_elements(By.ID, "lottie-container"):
                 day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
                 
-                # Protection: Don't click Day 1 if we know we are further along
+                # Safety check for Day 1 trap
                 if "Day 1" in day_label.text:
-                    print(f"🛑 Refusing to click {day_label.text}. Logic suggests we are still seeing the guest view.")
+                    print(f"🛑 Refusing to click {day_label.text}. Account is on Day 6+ but site shows Guest view.")
                     return
 
-                print(f"Targeting active day: {day_label.text}")
+                print(f"Found active reward: {day_label.text}. Clicking...")
                 target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
                 driver.execute_script("arguments[0].click();", target)
-                print("👍 Click performed on the correct day.")
+                print("✅ Success: Claim action triggered.")
                 time.sleep(5)
                 return 
             
