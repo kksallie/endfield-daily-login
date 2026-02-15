@@ -8,13 +8,18 @@ from selenium.webdriver.common.by import By
 def run_checkin():
     options = Options()
     options.add_argument("--headless")
+    # 1. SET A REAL USER AGENT (Prevents bot detection)
+    options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
+    
     driver = webdriver.Firefox(options=options)
+    driver.set_window_size(1920, 1080) # Ensure the grid isn't cramped
 
     try:
-        # 1. Open the domain to set the context for cookies
+        # 2. LOAD DOMAIN
         driver.get("https://game.skport.com")
+        time.sleep(2)
         
-        # 2. Inject cookies from environment variable
+        # 3. INJECT COOKIES
         cookies_raw = os.getenv("SKPORT_COOKIES")
         if not cookies_raw:
             print("Error: SKPORT_COOKIES secret not found.")
@@ -22,39 +27,45 @@ def run_checkin():
 
         cookies = json.loads(cookies_raw)
         for cookie in cookies:
-            # Selenium doesn't like 'sameSite' in some formats; clean it if needed
             if 'sameSite' in cookie:
                 if cookie['sameSite'] not in ["Strict", "Lax", "None"]:
                     del cookie['sameSite']
             driver.add_cookie(cookie)
 
-        # 3. Go to the Sign-in page
-        driver.get("https://game.skport.com/endfield/sign-in")
-        time.sleep(5) # Wait for page JS to load
+        # 4. GO TO SIGN-IN PAGE
+        driver.get("https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon")
+        time.sleep(8) # Wait extra time for the session to "take"
 
-        # 4. Logic to find and click the active sign-in button
+        # DEBUG: Check if we are actually logged in
+        if "Log in" in driver.page_source:
+            print("WARNING: 'Log in' text detected. Cookies might be invalid or expired.")
+            driver.save_screenshot("login_failed.png") 
+
+        # 5. FIND THE REWARD
         items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
         for item in items:
-            # 1. Check if this day is already completed
             if item.find_elements(By.ID, "completed-overlay"):
                 continue
                 
-            # 2. Check for the 'lottie-container' (the claimable animation)
-            # This is the unique marker you just found in the HTML!
             if item.find_elements(By.ID, "lottie-container"):
                 day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
-                print(f"Verified {day_label.text} is ready to claim. Clicking...")
+                print(f"Verified {day_label.text} is ready. Clicking...")
                 
-                # Click the icon container
+                # TARGET THE BUTTON
                 target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
-                target.click()
-                print("Claim action sent.")
-                return # Exit successfully
+                
+                # 6. USE JAVASCRIPT CLICK (Bypasses the "Obscured" error)
+                driver.execute_script("arguments[0].click();", target)
+                
+                print("Claim action sent via JavaScript.")
+                time.sleep(5)
+                return 
             
-        print("No claimable day (lottie-container) found. Reset likely hasn't happened yet.")
+        print("No claimable day found. It's possible you're already signed in or reset hasn't happened.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
+        driver.save_screenshot("error_state.png") # This helps us see the "obscuring" element
     finally:
         driver.quit()
 
