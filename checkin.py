@@ -92,34 +92,33 @@ def run_checkin():
                 print("❌ Error: Login required but secrets (EMAIL/PASSWORD) are missing.")
                 return
 
-        # 5. FINAL GUEST CHECK
-        if "Please log in first" in driver.page_source:
-            print("❌ Critical Error: Still seeing 'Please log in first'. Login failed.")
+    # 5. FINAL GUEST CHECK
+    # Check for the specific "Please log in first" element you found
+    login_check = driver.find_elements(By.XPATH, "//*[contains(text(), 'Please log in first')]")
+    if login_check:
+        print("❌ Critical Error: Login failed. 'Please log in first' message is still visible.")
+        return
+
+    # 6. CLAIM LOGIC
+    print("Login verified. Locating correct reward day...")
+    items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
+    for item in items:
+        # Skip if checkmark exists
+        if item.find_elements(By.ID, "completed-overlay"):
+            continue
+
+        # Find the glowing 'claimable' day
+        if item.find_elements(By.ID, "lottie-container"):
+            day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
+            
+            # The "Day 1" trap is removed so Day 10+ works correctly.
+            print(f"Found active reward: {day_label.text}. Clicking...")
+            target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
+            driver.execute_script("arguments[0].click();", target)
+            
+            print("✅ Success: Claim action triggered.")
+            time.sleep(5)
             return
-
-        # 6. CLAIM LOGIC
-        print("Login verified. Locating correct reward day...")
-        items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
-        for item in items:
-            # Skip if checkmark exists
-            if item.find_elements(By.ID, "completed-overlay"):
-                continue
-                
-            # Find the glowing 'claimable' day
-            if item.find_elements(By.ID, "lottie-container"):
-                day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
-                
-                # Safety check for Day 1 trap
-                if "Day 1" in day_label.text:
-                    print(f"🛑 Refusing to click {day_label.text}. Account is on Day 6+ but site shows Guest view.")
-                    return
-
-                print(f"Found active reward: {day_label.text}. Clicking...")
-                target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
-                driver.execute_script("arguments[0].click();", target)
-                print("✅ Success: Claim action triggered.")
-                time.sleep(5)
-                return 
             
         print("No claimable day found. You might be already signed in.")
 
