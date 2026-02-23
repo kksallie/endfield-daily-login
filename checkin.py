@@ -4,8 +4,6 @@ import time
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 def run_checkin():
     options = Options()
@@ -24,7 +22,6 @@ def run_checkin():
             try:
                 cookies = json.loads(cookies_raw)
                 for cookie in cookies:
-                    # Clean sameSite (Selenium only likes specific strings)
                     if 'sameSite' in cookie:
                         if isinstance(cookie['sameSite'], str):
                             ss = cookie['sameSite'].capitalize()
@@ -34,79 +31,73 @@ def run_checkin():
                                 del cookie['sameSite']
                         else:
                             del cookie['sameSite']
-                    
-                    # Fix domain issues to prevent "InvalidCookieDomainError"
                     if 'domain' in cookie:
                         del cookie['domain']
                     driver.add_cookie(cookie)
-                print("✅ Cookies injected successfully.")
+                print("✅ Cookies injected.")
             except Exception as e:
-                print(f"⚠️ Cookie injection warning: {e}")
+                print(f"⚠️ Cookie warning: {e}")
 
-        # 3. Go to Sign-in page
-        driver.get("https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon")
-        print("Waiting for page load and session check...")
+        # 3. Load Page
+        url = "https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon"
+        driver.get(url)
+        print("Waiting for page load...")
         time.sleep(15)
 
-        # 4. Ensure the grid is expanded
+        # 4. Expand Grid (using CSS instead of XPath)
         try:
-            show_all_btn = driver.find_element(By.CLASS_NAME, "sc-BvjM")
-            if "Show All" in show_all_btn.text:
-                driver.execute_script("arguments[0].click();", show_all_btn)
-                print("Expanded the reward grid.")
-                time.sleep(2)
+            show_all_btn = driver.find_element(By.CSS_SELECTOR, ".sc-BvjM")
+            driver.execute_script("arguments[0].click();", show_all_btn)
+            print("Grid expanded.")
+            time.sleep(2)
         except:
             pass
 
-        # 5. ROBUST LOGIN FALLBACK
+        # 5. Login Fallback (using CSS to avoid masking)
         email_fields = driver.find_elements(By.NAME, "email")
         if email_fields:
-            print("Login modal detected. Attempting credentials fallback...")
+            print("Login required. Using credentials...")
             email = os.getenv("SKPORT_EMAIL")
             password = os.getenv("SKPORT_PASSWORD")
             if email and password:
                 email_fields[0].send_keys(email)
-                pass_field = driver.find_element(By.XPATH, "//input[@type='password']")
+                # Avoid XPath for password
+                pass_field = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
                 pass_field.send_keys(password)
                 
-                # Using a generic selector for login button to avoid masking issues
                 login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
                 driver.execute_script("arguments[0].click();", login_btn)
-                print("Login submitted. Waiting for the post-login reload...")
                 time.sleep(25)
             else:
-                print("❌ Error: Login required but secrets (EMAIL/PASSWORD) are missing.")
+                print("❌ Missing credentials.")
                 return
 
-        # 6. FINAL GUEST CHECK
-        # Simplified XPath to avoid potential GitHub secret masking conflicts
-        login_check = driver.find_elements(By.XPATH, "//*[text()='Please log in first']")
-        if login_check:
-            print("❌ Critical Error: Login failed. 'Please log in first' message is still visible.")
+        # 6. Check for Login Error (Neutralized check)
+        # We check for a generic login error container rather than specific text
+        error_elements = driver.find_elements(By.CSS_SELECTOR, ".sc-hLseeU") 
+        if any("Please log in first" in e.text for e in error_elements):
+            print("❌ Login failed.")
             return
 
-        # 7. CLAIM LOGIC
-        print("Login verified. Locating correct reward day...")
-        items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
+        # 7. Claim Logic
+        print("Searching for reward...")
+        items = driver.find_elements(By.CSS_SELECTOR, ".sc-nuIvE")
         for item in items:
-            # Skip if checkmark exists
             if item.find_elements(By.ID, "completed-overlay"):
                 continue
             
-            # Find the glowing 'claimable' day
             if item.find_elements(By.ID, "lottie-container"):
-                day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
-                print(f"Found active reward: {day_label.text}. Clicking...")
-                target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
+                print("Found claimable day. Clicking...")
+                target = item.find_element(By.CSS_SELECTOR, ".sc-dltKUw")
                 driver.execute_script("arguments[0].click();", target)
-                print("✅ Success: Claim action triggered.")
+                print("✅ Success!")
                 time.sleep(5)
                 return
         
-        print("No claimable day found. You might be already signed in.")
+        print("Already signed in or no rewards available.")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"Error: {e}")
     finally:
         driver.quit()
 
