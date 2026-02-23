@@ -11,21 +11,20 @@ def run_checkin():
     options = Options()
     options.add_argument("--headless")
     options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
-    
     driver = webdriver.Firefox(options=options)
     driver.set_window_size(1920, 1080)
-
+    
     try:
         # 1. Base Domain
         driver.get("https://game.skport.com")
-        
+
         # 2. Inject Cookies
         cookies_raw = os.getenv("SKPORT_COOKIES")
         if cookies_raw:
             try:
                 cookies = json.loads(cookies_raw)
                 for cookie in cookies:
-                    # 1. Clean sameSite (Selenium only likes specific strings)
+                    # Clean sameSite (Selenium only likes specific strings)
                     if 'sameSite' in cookie:
                         if isinstance(cookie['sameSite'], str):
                             ss = cookie['sameSite'].capitalize()
@@ -36,12 +35,9 @@ def run_checkin():
                         else:
                             del cookie['sameSite']
                     
-                    # 2. Fix domain issues
-                    # Removing the 'domain' key forces Selenium to use the current domain (game.skport.com)
-                    # This prevents the "InvalidCookieDomainError"
+                    # Fix domain issues to prevent "InvalidCookieDomainError"
                     if 'domain' in cookie:
                         del cookie['domain']
-                    
                     driver.add_cookie(cookie)
                 print("✅ Cookies injected successfully.")
             except Exception as e:
@@ -49,13 +45,11 @@ def run_checkin():
 
         # 3. Go to Sign-in page
         driver.get("https://game.skport.com/endfield/sign-in?header=0&hg_media=launcher&hg_link_campaign=icon")
-        
         print("Waiting for page load and session check...")
-        time.sleep(15) 
+        time.sleep(15)
 
         # 4. Ensure the grid is expanded
         try:
-            # Look for the 'Show All Rewards' / 'Collapse' button
             show_all_btn = driver.find_element(By.CLASS_NAME, "sc-BvjM")
             if "Show All" in show_all_btn.text:
                 driver.execute_script("arguments[0].click();", show_all_btn)
@@ -64,68 +58,57 @@ def run_checkin():
         except:
             pass
 
-        # 4. ROBUST LOGIN FALLBACK
-        # We check for the email field by its 'name' attribute which we saw in your HTML
+        # 5. ROBUST LOGIN FALLBACK
         email_fields = driver.find_elements(By.NAME, "email")
-        
         if email_fields:
             print("Login modal detected. Attempting credentials fallback...")
             email = os.getenv("SKPORT_EMAIL")
             password = os.getenv("SKPORT_PASSWORD")
-            
             if email and password:
-                # Fill Email
                 email_fields[0].send_keys(email)
-                
-                # Find Password field by type
                 pass_field = driver.find_element(By.XPATH, "//input[@type='password']")
                 pass_field.send_keys(password)
                 
-                # Click the Log In button by its type
-                login_btn = driver.find_element(By.XPATH, "//button[@type='submit' and contains(., 'Log in')]")
+                # Using a generic selector for login button to avoid masking issues
+                login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
                 driver.execute_script("arguments[0].click();", login_btn)
-                
                 print("Login submitted. Waiting for the post-login reload...")
-                # The page reloads after login, so we wait extra time for it to settle
-                time.sleep(25) 
+                time.sleep(25)
             else:
                 print("❌ Error: Login required but secrets (EMAIL/PASSWORD) are missing.")
                 return
 
-        # 5. FINAL GUEST CHECK
-        # Check for the specific "Please log in first" element you found
-        login_check = driver.find_elements(By.XPATH, "//*[contains(text(), 'Please log in first')]")
+        # 6. FINAL GUEST CHECK
+        # Simplified XPath to avoid potential GitHub secret masking conflicts
+        login_check = driver.find_elements(By.XPATH, "//*[text()='Please log in first']")
         if login_check:
             print("❌ Critical Error: Login failed. 'Please log in first' message is still visible.")
             return
 
-        # 6. CLAIM LOGIC
+        # 7. CLAIM LOGIC
         print("Login verified. Locating correct reward day...")
         items = driver.find_elements(By.CLASS_NAME, "sc-nuIvE")
         for item in items:
             # Skip if checkmark exists
             if item.find_elements(By.ID, "completed-overlay"):
                 continue
-
+            
             # Find the glowing 'claimable' day
             if item.find_elements(By.ID, "lottie-container"):
                 day_label = item.find_element(By.CLASS_NAME, "sc-guPfGz")
-            
-            # The "Day 1" trap is removed so Day 10+ works correctly.
-            print(f"Found active reward: {day_label.text}. Clicking...")
-            target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
-            driver.execute_script("arguments[0].click();", target)
-            
-            print("✅ Success: Claim action triggered.")
-            time.sleep(5)
-            return
-            
-            print("No claimable day found. You might be already signed in.")
+                print(f"Found active reward: {day_label.text}. Clicking...")
+                target = item.find_element(By.CLASS_NAME, "sc-dltKUw")
+                driver.execute_script("arguments[0].click();", target)
+                print("✅ Success: Claim action triggered.")
+                time.sleep(5)
+                return
+        
+        print("No claimable day found. You might be already signed in.")
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-        finally:
-            driver.quit()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        driver.quit()
 
 if __name__ == "__main__":
     run_checkin()
