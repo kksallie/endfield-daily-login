@@ -4,6 +4,8 @@ import time
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait # NEW
+from selenium.webdriver.support import expected_conditions as EC # NEW
 
 def run_checkin():
     options = Options()
@@ -53,53 +55,70 @@ def run_checkin():
         except:
             pass
 
-        # 5. Login Fallback (using CSS to avoid masking)
-        email_fields = driver.find_elements(By.NAME, "email")
-        if email_fields:
-            print("Login required. Using credentials...")
-            email = os.getenv("SKPORT_EMAIL")
-            password = os.getenv("SKPORT_PASSWORD")
-            if email and password:
-                email_fields[0].send_keys(email)
-                # Avoid XPath for password
-                pass_field = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
-                pass_field.send_keys(password)
+        # 5. Login Flow (Updated for new popup structure)
+                try:
+                    # Wait up to 10 seconds for the "Please log in first" text to appear
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Please log in first')]"))
+                    )
+                    print("Login required. Using credentials...")
+            
+                    email = os.getenv("SKPORT_EMAIL")
+                    password = os.getenv("SKPORT_PASSWORD")
+            
+                    if email and password:
+                        # Click the "Log In" button on the main page to trigger the modal
+                        login_button_main = driver.find_element(By.XPATH, "//div[contains(text(), 'Please log in first')]/following-sibling::div//div[contains(text(), 'Log In')]")
+                        driver.execute_script("arguments[0].click();", login_button_main)
                 
-                login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-                driver.execute_script("arguments[0].click();", login_btn)
-                time.sleep(25)
-            else:
-                print("❌ Missing credentials.")
-                return
+                        # Wait for the modal input fields to become visible
+                        email_input = WebDriverWait(driver, 10).until(
+                            EC.visibility_of_element_located((By.CSS_SELECTOR, "input[type='text']"))
+                        )
+                        password_input = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
+                
+                        email_input.send_keys(email)
+                        password_input.send_keys(password)
+                
+                        # Click the submit button inside the modal
+                        login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+                        driver.execute_script("arguments[0].click();", login_btn)
+                
+                        # Wait up to 15 seconds for the login prompt to disappear, confirming success
+                        WebDriverWait(driver, 15).until(
+                            EC.invisibility_of_element_located((By.XPATH, "//div[contains(text(), 'Please log in first')]"))
+                        )
+                        print("✅ Login successful!")
+                    else:
+                        print("❌ Missing credentials.")
+                        return
 
-        # 6. Check for Login Error (Neutralized check)
-        # Use a generic CSS selector to find the error container
-        error_elements = driver.find_elements(By.CSS_SELECTOR, ".sc-hLseeU")
-        if any("Please log in first" in e.text for e in error_elements):
-            print("❌ Login failed.")
-            return
+                except Exception as e:
+                    # If the wait times out, it means the text wasn't found, so we are likely already logged in via cookies.
+                    print("Already signed in or login prompt not found. Proceeding...")
 
         # 7. Claim Logic
-        print("Searching for reward...")
-        items = driver.find_elements(By.CSS_SELECTOR, ".sc-nuIvE")
-        for item in items:
-            if item.find_elements(By.ID, "completed-overlay"):
-                continue
+                print("Searching for reward...")
+                try:
+                    # The currently claimable reward always gets this unique animation container
+                    claimable_reward = driver.find_element(By.ID, "lottie-container")
+                    print("Found claimable day. Clicking...")
             
-            if item.find_elements(By.ID, "lottie-container"):
-                print("Found claimable day. Clicking...")
-                target = item.find_element(By.CSS_SELECTOR, ".sc-dltKUw")
-                driver.execute_script("arguments[0].click();", target)
-                print("✅ Success!")
-                time.sleep(5)
-                return
-        
-        print("Already signed in or no rewards available.")
+                    # Click the parent container of the animation to ensure the click registers
+                    target = claimable_reward.find_element(By.XPATH, "..")
+                    driver.execute_script("arguments[0].click();", target)
+            
+                    print("✅ Success!")
+                    time.sleep(5) # Brief wait to let the claim register
+            
+                except Exception as e:
+                    # If lottie-container isn't found, there is nothing to claim today
+                    print("Already signed in or no rewards available today.")
 
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        driver.quit()
+            except Exception as e:
+                print(f"Error during execution: {e}")
+            finally:
+                driver.quit()
 
 if __name__ == "__main__":
     run_checkin()
