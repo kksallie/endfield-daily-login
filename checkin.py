@@ -73,8 +73,8 @@ def run_checkin():
                 return
 
         # 6. Check for Login Error (Neutralized check)
-        # We check for a generic login error container rather than specific text
-        error_elements = driver.find_elements(By.CSS_SELECTOR, ".sc-hLseeU") 
+        # Use a generic CSS selector to find the error container
+        error_elements = driver.find_elements(By.CSS_SELECTOR, ".sc-hLseeU")
         if any("Please log in first" in e.text for e in error_elements):
             print("❌ Login failed.")
             return
