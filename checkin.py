@@ -67,21 +67,29 @@ def run_checkin():
             pass
 
         # 4. Claim Logic
-        print("Searching for reward...")
-        try:
-            # Target the glowing animation container directly
-            claimable_reward = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "lottie-container"))
-            )
-            print("Found claimable day. Clicking...")
+                print("Searching for reward...")
+                try:
+                    # 1. Wait for the lottie animation (the glow) to appear
+                    # We use a shorter wait here to avoid long hangs
+                    animation = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.ID, "lottie-container"))
+                    )
+                    print("✨ Found claimable reward animation!")
+
+                    # 2. To be safe, we want to click the container that holds the whole day box.
+                    # We'll climb up the tree to find the day wrapper (sc-gcnLPh)
+                    # or simply use JS to click the animation's grandparent.
+                    target = animation.find_element(By.XPATH, "./ancestor::div[contains(@class, 'sc-gcnLPh')]")
             
-            # Click the parent container
-            target = claimable_reward.find_element(By.XPATH, "..")
-            driver.execute_script("arguments[0].click();", target)
-            print("✅ Success!")
-            time.sleep(5)
-        except:
-            print("Already claimed today or no rewards available.")
+                    print("Clicking reward container...")
+                    driver.execute_script("arguments[0].click();", target)
+            
+                    print("✅ Success! Reward claimed.")
+                    time.sleep(5) # Give it time to register the click
+
+                except Exception as e:
+                    # If lottie-container isn't found, Day 3 probably already has the "Check" mark.
+                    print("No claimable animation found. You likely already claimed today's reward.")
 
     except Exception as e:
         print(f"Error during execution: {e}")
